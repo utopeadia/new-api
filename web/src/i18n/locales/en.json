@@ -465,6 +465,7 @@
   "提示": "Prompt",
   "补全": "Completion",
   "消耗额度": "Used Quota",
+  "速度(token/s)": "Speed (token/s)",
   "渠道不存在：%d": "Channel does not exist: %d",
   "数据库一致性已被破坏，请联系管理员": "Database consistency has been broken, please contact the administrator",
   "使用近似的方式估算 token 数以减少计算量": "Estimate the number of tokens in an approximate way to reduce computational load",
