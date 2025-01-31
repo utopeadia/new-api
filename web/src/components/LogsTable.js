@@ -317,6 +317,18 @@ const LogsTable = () => {
       },
     },
     {
+      title: t('速度(token/s)'),
+      dataIndex: 'speed',
+      render: (text, record, index) => {
+        if (!text || text === 0) return '-';
+        return (
+          <Tag color={text < 10 ? 'red' : text < 30 ? 'orange' : 'green'} size='large'>
+            {text.toFixed(1)}
+          </Tag>
+        );
+      },
+    },
+    {
       title: t('提示'),
       dataIndex: 'prompt_tokens',
       render: (text, record, index) => {
