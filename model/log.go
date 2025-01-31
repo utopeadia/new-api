@@ -13,24 +13,25 @@ import (
 )
 
 type Log struct {
-	Id               int    `json:"id" gorm:"index:idx_created_at_id,priority:1"`
-	UserId           int    `json:"user_id" gorm:"index"`
-	CreatedAt        int64  `json:"created_at" gorm:"bigint;index:idx_created_at_id,priority:2;index:idx_created_at_type"`
-	Type             int    `json:"type" gorm:"index:idx_created_at_type"`
-	Content          string `json:"content"`
-	Username         string `json:"username" gorm:"index:index_username_model_name,priority:2;default:''"`
-	TokenName        string `json:"token_name" gorm:"index;default:''"`
-	ModelName        string `json:"model_name" gorm:"index;index:index_username_model_name,priority:1;default:''"`
-	Quota            int    `json:"quota" gorm:"default:0"`
-	PromptTokens     int    `json:"prompt_tokens" gorm:"default:0"`
-	CompletionTokens int    `json:"completion_tokens" gorm:"default:0"`
-	UseTime          int    `json:"use_time" gorm:"default:0"`
-	IsStream         bool   `json:"is_stream" gorm:"default:false"`
-	ChannelId        int    `json:"channel" gorm:"index"`
-	ChannelName      string `json:"channel_name" gorm:"->"`
-	TokenId          int    `json:"token_id" gorm:"default:0;index"`
-	Group            string `json:"group" gorm:"index"`
-	Other            string `json:"other"`
+    Id               int     `json:"id" gorm:"index:idx_created_at_id,priority:1"`
+    UserId           int     `json:"user_id" gorm:"index"`
+    CreatedAt        int64   `json:"created_at" gorm:"bigint;index:idx_created_at_id,priority:2;index:idx_created_at_type"`
+    Type             int     `json:"type" gorm:"index:idx_created_at_type"`
+    Content          string  `json:"content"`
+    Username         string  `json:"username" gorm:"index:index_username_model_name,priority:2;default:''"`
+    TokenName        string  `json:"token_name" gorm:"index;default:''"`
+    ModelName        string  `json:"model_name" gorm:"index;index:index_username_model_name,priority:1;default:''"`
+    Quota            int     `json:"quota" gorm:"default:0"`
+    PromptTokens     int     `json:"prompt_tokens" gorm:"default:0"`
+    CompletionTokens int     `json:"completion_tokens" gorm:"default:0"`
+    UseTime          int     `json:"use_time" gorm:"default:0"`
+    IsStream         bool    `json:"is_stream" gorm:"default:false"`
+    ChannelId        int     `json:"channel" gorm:"index"`
+    ChannelName      string  `json:"channel_name" gorm:"->"`
+    TokenId          int     `json:"token_id" gorm:"default:0;index"`
+    Group            string  `json:"group" gorm:"index"`
+    Other            string  `json:"other"`
+    Speed            float64 `json:"speed" gorm:"default:0"`
 }
 
 const (
@@ -88,41 +89,56 @@ func RecordLog(userId int, logType int, content string) {
 }
 
 func RecordConsumeLog(ctx context.Context, userId int, channelId int, promptTokens int, completionTokens int,
-	modelName string, tokenName string, quota int, content string, tokenId int, userQuota int, useTimeSeconds int,
-	isStream bool, group string, other map[string]interface{}) {
-	common.LogInfo(ctx, fmt.Sprintf("record consume log: userId=%d, 用户调用前余额=%d, channelId=%d, promptTokens=%d, completionTokens=%d, modelName=%s, tokenName=%s, quota=%d, content=%s", userId, userQuota, channelId, promptTokens, completionTokens, modelName, tokenName, quota, content))
-	if !common.LogConsumeEnabled {
-		return
-	}
-	username, _ := GetUsernameById(userId, false)
-	otherStr := common.MapToJsonStr(other)
-	log := &Log{
-		UserId:           userId,
-		Username:         username,
-		CreatedAt:        common.GetTimestamp(),
-		Type:             LogTypeConsume,
-		Content:          content,
-		PromptTokens:     promptTokens,
-		CompletionTokens: completionTokens,
-		TokenName:        tokenName,
-		ModelName:        modelName,
-		Quota:            quota,
-		ChannelId:        channelId,
-		TokenId:          tokenId,
-		UseTime:          useTimeSeconds,
-		IsStream:         isStream,
-		Group:            group,
-		Other:            otherStr,
-	}
-	err := LOG_DB.Create(log).Error
-	if err != nil {
-		common.LogError(ctx, "failed to record log: "+err.Error())
-	}
-	if common.DataExportEnabled {
-		gopool.Go(func() {
-			LogQuotaData(userId, username, modelName, quota, common.GetTimestamp(), promptTokens+completionTokens)
-		})
-	}
+    modelName string, tokenName string, quota int, content string, tokenId int, userQuota int, useTimeSeconds int,
+    isStream bool, group string, other map[string]interface{}) {
+    common.LogInfo(ctx, fmt.Sprintf("record consume log: userId=%d, 用户调用前余额=%d, channelId=%d, promptTokens=%d, completionTokens=%d, modelName=%s, tokenName=%s, quota=%d, content=%s", userId, userQuota, channelId, promptTokens, completionTokens, modelName, tokenName, quota, content))
+    if !common.LogConsumeEnabled {
+        return
+    }
+    username, _ := GetUsernameById(userId, false)
+    otherStr := common.MapToJsonStr(other)
+
+    speed := 0.0
+    if useTimeSeconds > 0 && completionTokens > 0 {
+        var otherMap map[string]interface{}
+        if err := json.Unmarshal([]byte(otherStr), &otherMap); err == nil {
+            if frt, ok := otherMap["frt"].(float64); ok && frt > 0 {
+                actualTime := float64(useTimeSeconds) - (frt / 1000.0)
+                if actualTime > 0 {
+                    speed = float64(completionTokens) / actualTime
+                }
+            }
+        }
+    }
+
+    log := &Log{
+        UserId:           userId,
+        Username:         username,
+        CreatedAt:        common.GetTimestamp(),
+        Type:             LogTypeConsume,
+        Content:          content,
+        PromptTokens:     promptTokens,
+        CompletionTokens: completionTokens,
+        TokenName:        tokenName,
+        ModelName:        modelName,
+        Quota:            quota,
+        ChannelId:        channelId,
+        TokenId:          tokenId,
+        UseTime:          useTimeSeconds,
+        IsStream:         isStream,
+        Group:            group,
+        Other:            otherStr,
+        Speed:            speed,
+    }
+    err := LOG_DB.Create(log).Error
+    if err != nil {
+        common.LogError(ctx, "failed to record log: "+err.Error())
+    }
+    if common.DataExportEnabled {
+        gopool.Go(func() {
+            LogQuotaData(userId, username, modelName, quota, common.GetTimestamp(), promptTokens+completionTokens)
+        })
+    }
 }
 
 func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, startIdx int, num int, channel int, group string) (logs []*Log, total int64, err error) {
